@@ -130,49 +130,23 @@ class CommonMarkParser(parsers.Parser):
         self.current_node.append(n)
 
     def visit_link(self, mdnode):
-        ref_node = nodes.reference()
-        # Check destination is supported for cross-linking and remove extension
-        destination = mdnode.destination
-        _, ext = splitext(destination)
-        # TODO check for other supported extensions, such as those specified in
-        # the Sphinx conf.py file but how to access this information?
-        # TODO this should probably only remove the extension for local paths,
-        # i.e. not uri's starting with http or other external prefix.
-        if ext.replace('.', '') in self.supported:
-            destination = destination.replace(ext, '')
-        ref_node['refuri'] = destination
-        # TODO okay, so this is acutally not always the right line number, but
-        # these mdnodes won't have sourcepos on them for whatever reason. This
-        # is better than 0 though.
-        ref_node.line = self._get_line(mdnode)
+        ref_node = None
+
+        inner_node = nodes.reference()
+        inner_node['refuri'] = mdnode.destination
+        ref_node = addnodes.pending_xref(
+            reftarget=mdnode.destination,
+            reftype='any',
+            refexplicit=True,
+            refwarn=True
+        )
         if mdnode.title:
             ref_node['title'] = mdnode.title
-        next_node = ref_node
+            inner_node['title'] = mdnode.title
+        ref_node.append(inner_node)
 
-        url_check = urlparse(destination)
-        if not url_check.scheme and not url_check.fragment:
-            wrap_node = addnodes.pending_xref(
-                reftarget=destination,
-                reftype='any',
-                refdomain=None,  # Added to enable cross-linking
-                refexplicit=True,
-                refwarn=True
-            )
-            # TODO also not correct sourcepos
-            wrap_node.line = self._get_line(mdnode)
-            if mdnode.title:
-                wrap_node['title'] = mdnode.title
-            wrap_node.append(ref_node)
-            next_node = wrap_node
-
-        self.current_node.append(next_node)
-        self.current_node = ref_node
-
-    def depart_link(self, mdnode):
-        if isinstance(self.current_node.parent, addnodes.pending_xref):
-            self.current_node = self.current_node.parent.parent
-        else:
-            self.current_node = self.current_node.parent
+        self.current_node.append(ref_node)
+        self.current_node = inner_node
 
     def visit_image(self, mdnode):
         img_node = nodes.image()
